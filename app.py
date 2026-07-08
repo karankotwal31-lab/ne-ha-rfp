@@ -1,0 +1,65 @@
+import streamlit as st
+from langchain_google_genai import GoogleGenerativeAI
+import os
+
+st.set_page_config(page_title="Ne-Ha | RFP Engine", page_icon="🚀", layout="wide")
+
+with st.sidebar:
+    st.title("⚙️ Control Panel")
+    st.markdown("Welcome to **Ne-Ha**, your autonomous workspace.")
+    st.write("---")
+    api_key = st.text_input("Gemini API Key:", type="password", help="Enter your Google AI developer key to authorize the engine.")
+    st.write("---")
+    st.markdown("### Engine Status")
+    if api_key:
+        st.success("API Key Loaded")
+    else:
+        st.warning("Awaiting API Key")
+
+st.title("🚀 Ne-Ha")
+st.caption("Enterprise Autonomous RFP Proposal & Audit Engine")
+st.write("---")
+
+col1, col2 = st.columns([1, 1], gap="large")
+
+with col1:
+    st.subheader("📋 Input Criteria")
+    default_reqs = """1. System architecture must use AES-256 bit encryption.
+2. Infrastructure must provide 99.99% uptime guarantees."""
+    
+    requirements = st.text_area(
+        "Paste Client RFP Requirements Here:", 
+        value=default_reqs, 
+        height=250
+    )
+    
+    generate_btn = st.button("Generate & Audit Proposal", type="primary", use_container_width=True)
+
+with col2:
+    st.subheader("✨ Generated Output")
+    
+    if generate_btn:
+        if not api_key:
+            st.error("🔑 Configuration missing: Please input your Gemini API Key in the left sidebar.")
+        else:
+            try:
+                llm = GoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
+                with st.spinner("🧠 Analyzing requirements and structuring enterprise response..."):
+                    prompt = f"Generate a highly professional corporate RFP proposal response explicitly addressing these requirements:\n{requirements}"
+                    response = llm.invoke(prompt)
+                    
+                    st.toast("Proposal Drafted Successfully!", icon="✅")
+                    st.markdown("### Draft Response")
+                    st.markdown(response)
+                    st.write("---")
+                    st.download_button(
+                        label="📥 Download Proposal (.txt)",
+                        data=response,
+                        file_name="Ne-Ha_RFP_Proposal.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+            except Exception as e:
+                st.error(f"Execution Error: {e}")
+    else:
+        st.info("Awaiting your input criteria. Click 'Generate & Audit Proposal' to execute the draft workspace.")
