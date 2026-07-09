@@ -7,3 +7,4 @@ openpyxl
 tabulate
 pdfplumber
 Pillow
+supabase
