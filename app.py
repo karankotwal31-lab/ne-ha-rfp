@@ -1,66 +1,95 @@
 import streamlit as st
-from langchain_google_genai import ChatGoogleGenerativeAI
-from pypdf import PdfReader
-import pdfplumber
-from PIL import Image
 import os
 import re
 import json
-import sqlite3
 import pandas as pd
+from pypdf import PdfReader
+import pdfplumber
 from docx import Document
 from openpyxl import Workbook
 from io import BytesIO
+from supabase import create_client, Client
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Set global structural app page configurations
 st.set_page_config(
-    page_title="Ne-Ha | Enterprise RFP Data Matrix", 
+    page_title="Ne-Ha | Commercial Enterprise Platform", 
     page_icon="🚀", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-DB_FILE = "neha_enterprise_rfp.db"
+# --- SECURE CLOUD CONNECTION BOOTSTRAPPING ---
+# In production, these are retrieved safely from Streamlit Secrets or Environment Variables
+SUPABASE_URL = st.sidebar.text_input("Supabase URL:", type="default")
+SUPABASE_KEY = st.sidebar.text_input("Supabase Anon Key:", type="password")
+GEMINI_MASTER_KEY = st.sidebar.text_input("Master Gemini API Key:", type="password")
 
-# --- ENTERPRISE RELATIONAL RETENTION LAYER ---
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS rfp_matrix (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            doc_name TEXT,
-            section TEXT,
-            requirement_extracted TEXT,
-            category TEXT,
-            assigned_team TEXT,
-            status TEXT,
-            risk_multiplier REAL,
-            historical_match TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+def get_supabase() -> Client:
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def save_dataframe_to_db(df, doc_name):
+# --- AUTHENTICATION INTERFACE MANAGER ---
+def render_auth_portal(supabase: Client):
+    st.title("🔐 Ne-Ha Enterprise Identity Portal")
+    tabs = st.tabs(["Existing User Sign-In", "Create Enterprise Account"])
+    
+    with tabs[0]:
+        email = st.text_input("Corporate Email:", key="login_email")
+        password = st.text_input("Password:", type="password", key="login_password")
+        if st.button("Authenticate Workspace Access", type="primary", use_container_width=True):
+            try:
+                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                st.session_state["user"] = res.user
+                st.rerun()
+            except Exception as e:
+                st.error(f"Authentication Denied: {e}")
+                
+    with tabs[1]:
+        new_email = st.text_input("Corporate Email Address:", key="reg_email")
+        new_password = st.text_input("Secure Password (Min 8 chars):", type="password", key="reg_password")
+        if st.button("Provision New Account Environment", use_container_width=True):
+            try:
+                supabase.auth.sign_up({"email": new_email, "password": new_password})
+                st.success("Account created! Please verify your corporate email before signing in.")
+            except Exception as e:
+                st.error(f"Provisioning Failed: {e}")
+
+if "user" not in st.session_state:
+    st.session_state["user"] = None
+
+supabase_client = get_supabase()
+
+if not supabase_client:
+    st.warning("⚠️ Critical Configuration Missing: Please insert your Supabase connection parameters in the sidebar panel.")
+    st.stop()
+
+if st.session_state["user"] is None:
+    render_auth_portal(supabase_client)
+    st.stop()
+
+# Cache active session credentials safely
+active_user_id = st.session_state["user"].id
+
+# --- SUPABASE DATA RETENTION MATRIX PLUMBING ---
+def save_dataframe_to_cloud(df, doc_name):
     if df is None or df.empty:
         return
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM rfp_matrix WHERE doc_name = ?", (doc_name,))
+    # Delete older cached iterations safely using client row policies
+    supabase_client.table("rfp_matrix").delete().eq("doc_name", doc_name).execute()
     
-    df_to_save = df.copy()
-    df_to_save["doc_name"] = doc_name
-    df_to_save.to_sql("rfp_matrix", conn, if_exists="append", index=False)
-    conn.commit()
-    conn.close()
+    records = df.copy()
+    records["doc_name"] = doc_name
+    records_dict = records.to_dict(orient="records")
+    
+    # Commit changes safely into PostgreSQL
+    supabase_client.table("rfp_matrix").insert(records_dict).execute()
 
-def load_latest_document_from_db(doc_name):
-    conn = sqlite3.connect(DB_FILE)
-    query = "SELECT section, requirement_extracted, category, assigned_team, status, risk_multiplier, historical_match FROM rfp_matrix WHERE doc_name = ?"
-    df = pd.read_sql_query(query, conn, params=(doc_name,))
-    conn.close()
-    return df if not df.empty else None
+def load_document_from_cloud(doc_name):
+    res = supabase_client.table("rfp_matrix").select("*").eq("doc_name", doc_name).execute()
+    if res.data:
+        return pd.DataFrame(res.data).drop(columns=["id", "user_id", "created_at"], errors="ignore")
+    return None
 
 # --- PHASE 3.5: LAYOUT TEXT SANITIZER ---
 def robust_text_sanitizer(text):
@@ -71,44 +100,25 @@ def robust_text_sanitizer(text):
     text = re.sub(r'\n\s*\n', '\n', text)
     return text.strip()
 
-# --- HIGH-RESILIENCE JSON STRUCTURAL REPAIR ENGINE ---
 def extract_json_array(response_text):
-    if not response_text:
-        return get_emergency_fallback("Null string payload passed down to parser.")
-        
     cleaned_text = response_text.strip()
     cleaned_text = re.sub(r'^```json\s*', '', cleaned_text, flags=re.IGNORECASE)
     cleaned_text = re.sub(r'^```\s*', '', cleaned_text, flags=re.IGNORECASE)
     cleaned_text = re.sub(r'\s*```$', '', cleaned_text, flags=re.IGNORECASE)
-    cleaned_text = cleaned_text.strip()
-
     try:
         match = re.search(r'\[\s*\{.*\}\s*\]', cleaned_text, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
-        return json.loads(cleaned_text)
+        return json.loads(match.group(0)) if match else json.loads(cleaned_text)
     except Exception as e:
-        try:
-            fixed_text = re.sub(r'(?<=:\s")(.*?)(?=",?\s*\n)', lambda m: m.group(1).replace('"', '\\"'), cleaned_text)
-            match = re.search(r'\[\s*\{.*\}\s*\]', fixed_text, re.DOTALL)
-            if match:
-                return json.loads(match.group(0))
-        except Exception:
-            pass
-        return get_emergency_fallback(f"JSON Framework Exception: {str(e)}")
+        return [{
+            "section": "Structural Parse Alert",
+            "requirement_extracted": f"JSON Normalization Exception Intercept: {str(e)}",
+            "category": "Proposal Draft",
+            "assigned_team": "Sales Planning",
+            "status": "Pending Review",
+            "risk_multiplier": 1.00,
+            "historical_match": "0%"
+        }]
 
-def get_emergency_fallback(reason):
-    return [{
-        "section": "Raw Extraction Fallback",
-        "requirement_extracted": f"Parser Security Intercept: {reason}",
-        "category": "Proposal Draft",
-        "assigned_team": "Sales Planning",
-        "status": "Pending Review",
-        "risk_multiplier": 1.00,
-        "historical_match": "0% (State Recovery Core Active)"
-    }]
-
-# --- ASYNCHRONOUS COGNITIVE CELL MANAGER ---
 def sync_matrix_edits():
     if "interactive_matrix_editor" in st.session_state and st.session_state.get("active_doc_name"):
         edits = st.session_state["interactive_matrix_editor"]
@@ -123,291 +133,148 @@ def sync_matrix_edits():
             df = pd.concat([df, pd.DataFrame([added_row])], ignore_index=True)
             
         st.session_state["rfp_data_matrix"] = df
-        save_dataframe_to_db(df, doc_name)
+        save_dataframe_to_cloud(df, doc_name)
 
-# --- BI-DIRECTIONAL EXCEL LAYOUT MATRIX STYLER ---
 def generate_enterprise_excel(df):
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
     ws.title = "RFP Requirements Matrix"
     ws.views.sheetView[0].showGridLines = True
-    
-    headers = list(df.columns)
-    ws.append(headers)
-    
+    ws.append(list(df.columns))
     for _, row in df.iterrows():
         ws.append(list(row))
-        
     wb.save(output)
     return output.getvalue()
 
-init_db()
+# --- MAIN WORKSPACE UI ---
+st.sidebar.markdown(f"**Authenticated As:**\n`{st.session_state['user'].email}`")
+if st.sidebar.button("Log Out of Workspace"):
+    supabase_client.auth.sign_out()
+    st.session_state["user"] = None
+    st.rerun()
 
 if "rfp_data_matrix" not in st.session_state:
     st.session_state["rfp_data_matrix"] = None
 if "active_doc_name" not in st.session_state:
     st.session_state["active_doc_name"] = None
 
-with st.sidebar:
-    st.title("⚙️ Commercial Panel")
-    st.markdown("Welcome to **Ne-Ha**, your autonomous workspace.")
-    st.write("---")
-    api_key = st.text_input("Gemini API Key:", type="password", help="Enter your Google AI developer key.")
-    st.write("---")
-    st.markdown("### Workspace Telemetry")
-    if api_key:
-        st.success("Core Engine Online")
-    else:
-        st.warning("Awaiting Authorization")
-
-st.title("🚀 Ne-Ha Portal")
-st.caption("Universal Multi-Format Commercial RFP Matrix & Workflow Workspace [Stateful Layer v5.5]")
+st.title("🚀 Ne-Ha Enterprise Portal")
+st.caption("Secure Multi-Tenant Commercial Requirements Management Framework [SaaS Core v1.0]")
 st.write("---")
 
 col_left, col_right = st.columns([1, 1.5], gap="large")
 
 with col_left:
-    st.subheader("📁 Snap & Audit: Document Ingestion")
-    st.markdown("Drop client procurement spreadsheets (.xlsx), narrative contracts (.docx), or legacy PDFs below.")
+    st.subheader("📁 Ingest Procurement Assets")
+    uploaded_file = st.file_uploader("Upload Document (.pdf, .docx, .xlsx):", type=["pdf", "docx", "xlsx"], key="rfp_uploader")
     
-    uploaded_file = st.file_uploader(
-        "Upload Client Commercial File:", 
-        type=["pdf", "docx", "xlsx"], 
-        key="rfp_uploader"
-    )
-    
-    if uploaded_file is not None:
-        st.info(f"📄 File Target Ingested: '{uploaded_file.name}'")
-        if st.session_state["active_doc_name"] != uploaded_file.name:
-            cached_df = load_latest_document_from_db(uploaded_file.name)
-            if cached_df is not None:
-                st.session_state["rfp_data_matrix"] = cached_df
-                st.session_state["active_doc_name"] = uploaded_file.name
-                st.toast("Auto-Restored Workspace State from Local DB Archive! 🎉")
+    if uploaded_file is not None and st.session_state["active_doc_name"] != uploaded_file.name:
+        cached_df = load_document_from_cloud(uploaded_file.name)
+        if cached_df is not None:
+            st.session_state["rfp_data_matrix"] = cached_df
+            st.session_state["active_doc_name"] = uploaded_file.name
+            st.toast("Retrieved Workspace State from Cloud Database! ☁️")
 
     generate_btn = st.button("Execute Data Matrix Shredder", type="primary", use_container_width=True)
 
 with col_right:
-    st.subheader("✨ Enterprise Requirement Workspace Matrix")
+    st.subheader("✨ Workspace Grid Matrix")
     
     if generate_btn:
-        if not api_key:
-            st.error("🔑 Configuration missing: Please input your Gemini API Key in the left sidebar.")
+        if not GEMINI_MASTER_KEY:
+            st.error("🔑 Master Key missing. Configure your AI parameters in the side panel.")
         elif uploaded_file is None:
-            st.error("❌ Document missing: Please upload a file on the left before running execution.")
+            st.error("❌ Document missing. Please upload a target file first.")
         else:
             try:
-                os.environ["GOOGLE_API_KEY"] = api_key
+                os.environ["GOOGLE_API_KEY"] = GEMINI_MASTER_KEY
                 st.session_state["active_doc_name"] = uploaded_file.name
                 
-                # Low temperature for highly structured formatting constraints
-                llm = ChatGoogleGenerativeAI(
-                    model="gemini-2.5-flash", 
-                    transport="rest",
-                    temperature=0.1
-                )
-                
+                llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", transport="rest", temperature=0.1)
                 raw_extracted_text = ""
                 file_extension = uploaded_file.name.split(".")[-1].lower()
                 is_scanned_pdf = False
                 pdf_page_images = []
                 
-                with st.spinner(f"⏳ Processing layout layers from .{file_extension} binary asset..."):
-                    
+                with st.spinner("⏳ Extracting document elements..."):
                     if file_extension == "pdf":
-                        # Fast primary text layer scan
                         reader = PdfReader(uploaded_file)
-                        target_pages = reader.pages[:15] # Safe upper boundary to protect token limitations
-                        for page in target_pages:
-                            try:
-                                page_text = page.extract_text()
-                                if page_text:
-                                    raw_extracted_text += page_text + "\n"
-                            except Exception:
-                                continue
+                        for page in reader.pages[:15]:
+                            txt = page.extract_text()
+                            if txt: raw_extracted_text += txt + "\n"
                         
-                        # --- CRITICAL AUTOMATED FALLBACK TRIGGER ---
-                        # If characters are blank or completely compressed, trigger pixel rendering engine
-                        cleaned_test = robust_text_sanitizer(raw_extracted_text)
-                        if len(cleaned_test) < 150: 
+                        if len(robust_text_sanitizer(raw_extracted_text)) < 150:
                             is_scanned_pdf = True
-                            st.warning("📸 Scanned/Flat PDF structure detected! Activating Multi-Modal Vision Processing Layer...")
                             uploaded_file.seek(0)
                             with pdfplumber.open(uploaded_file) as pdf:
-                                # Process the top 5 key pages to stay clear of rate limits
-                                for idx, page in enumerate(pdf.pages[:5]):
-                                    # Convert vector space straight into high-density PIL images
-                                    img = page.to_image(resolution=150).original
-                                    pdf_page_images.append(img)
-                                
+                                for page in pdf.pages[:5]:
+                                    pdf_page_images.append(page.to_image(resolution=150).original)
+                                    
                     elif file_extension == "docx":
                         doc = Document(uploaded_file)
-                        for paragraph in doc.paragraphs:
-                            if paragraph.text.strip():
-                                raw_extracted_text += paragraph.text + "\n"
-                        
+                        for p in doc.paragraphs:
+                            if p.text.strip(): raw_extracted_text += p.text + "\n"
                         for table in doc.tables:
                             seen_cells = set()
                             for row in table.rows:
-                                row_text = []
+                                r_text = []
                                 for cell in row.cells:
                                     if cell not in seen_cells:
                                         seen_cells.add(cell)
-                                        txt = cell.text.strip()
-                                        if txt:
-                                            row_text.append(txt)
-                                if row_text:
-                                    raw_extracted_text += " | ".join(row_text) + "\n"
-                                    
+                                        if cell.text.strip(): r_text.append(cell.text.strip())
+                                if r_text: raw_extracted_text += " | ".join(r_text) + "\n"
+                                
                     elif file_extension == "xlsx":
                         excel_file = pd.ExcelFile(uploaded_file)
                         for sheet_name in excel_file.sheet_names:
                             excel_df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
                             if not excel_df.empty:
-                                raw_extracted_text += f"\n--- Sheet: {sheet_name} ---\n"
-                                raw_extracted_text += excel_df.to_markdown(index=False) + "\n"
-                
-                # --- ORCHESTRATE COGNITIVE RUNTIMES BASED ON STRUCTURE ---
+                                raw_extracted_text += f"\n--- Sheet: {sheet_name} ---\n" + excel_df.to_markdown(index=False) + "\n"
+
                 if is_scanned_pdf:
-                    with st.spinner("🧠 Initializing computer vision array. Scanning page matrices directly..."):
-                        # Build standard structural prompt framing
-                        base_vision_prompt = """You are an elite corporate proposal specialist, risk auditor, and technical software engineer.
-                        Examine the uploaded document page image carefully. Transcribe, analyze, and extract the critical 10-15 core requirements, commercial liabilities, load metrics, or execution targets you see.
-                        
-                        CRITICAL FORMATTING BOUNDARY: You must return ONLY a clean, valid raw JSON array block. Do NOT use markdown symbols, do NOT include backticks (```json), and escape any interior quotation symbols.
-                        
-                        Expected Schema Framework:
-                        {
-                            "section": "Visible Clause reference, page index, or margin header matching the source location",
-                            "requirement_extracted": "Detailed transcription and operational breakdown summary of the target rule/condition discovered",
-                            "category": "Must be exactly one of: 'Proposal Draft', 'Risk Audit', or 'Calculation Layer'",
-                            "assigned_team": "Must be exactly one of: 'Sales Planning', 'Legal/Compliance', 'Technical Ops', or 'Commercial Finance'",
-                            "status": "Pending Review",
-                            "risk_multiplier": 1.00,
-                            "historical_match": "N/A (Vision Core Extracted)"
-                        }
-                        """
-                        # Pass vision tokens directly inside the multi-modal payload list array
-                        vision_payload = [base_vision_prompt] + pdf_page_images
-                        
-                        try:
-                            response_object = llm.invoke(vision_payload)
-                            full_output = response_object.content
-                        except Exception as api_err:
-                            raise RuntimeError(f"Vision Pipeline Boundary Violation: {api_err}")
+                    base_prompt = "Analyze the uploaded page image and extract 10-15 core requirements, commercial liabilities, or conditions into a clean raw JSON array. Do not use markdown blocks or backticks."
+                    payload = [base_prompt] + pdf_page_images
+                    response = llm.invoke(payload)
+                    full_output = response.content
                 else:
-                    cleaned_rfp_text = robust_text_sanitizer(raw_extracted_text)
-                    if not cleaned_rfp_text:
-                        raise ValueError("The document contains no legible strings or layout targets.")
-                        
-                    with st.spinner("🧠 Shredding text layer metrics down into structured tabular arrays..."):
-                        text_prompt = f"""You are an elite corporate proposal specialist, risk auditor, and technical software engineer.
-                        Analyze the text block below. Core objective: extract the critical, most meaningful 15-20 core execution line-items, commercial conditions, or liabilities.
-                        
-                        CRITICAL FORMATTING BOUNDARY: You must return ONLY a clean, valid raw JSON array block. Do NOT use markdown symbols, do NOT include backticks (```json), and escape any interior quotation symbols.
-                        
-                        Expected Schema Framework:
-                        {{
-                            "section": "Clause reference or section header identified in document",
-                            "requirement_extracted": "Granular summary of requirement, timeline demand, or equipment expectation",
-                            "category": "Must be exactly one of: 'Proposal Draft', 'Risk Audit', or 'Calculation Layer'",
-                            "assigned_team": "Must be exactly one of: 'Sales Planning', 'Legal/Compliance', 'Technical Ops', or 'Commercial Finance'",
-                            "status": "Pending Review",
-                            "risk_multiplier": 1.00,
-                            "historical_match": "92% Match to Historical Bid"
-                        }}
-
-                        --- EXTRACTED CLIENT RFP TEXT ---
-                        {cleaned_rfp_text}
-                        """
-                        try:
-                            response_object = llm.invoke(text_prompt)
-                            full_output = response_object.content
-                        except Exception as api_err:
-                            raise RuntimeError(f"Text Inference Boundary Violation: {api_err}")
+                    cleaned_text = robust_text_sanitizer(raw_extracted_text)
+                    prompt = f"Analyze the following text block. Extract 15-20 core requirements into a raw JSON array schema. No backticks.\n\nText:\n{cleaned_text}"
+                    response = llm.invoke(prompt)
+                    full_output = response.content
                 
-                parsed_json_data = extract_json_array(full_output)
-                compiled_df = pd.DataFrame(parsed_json_data)
-                
+                compiled_df = pd.DataFrame(extract_json_array(full_output))
                 st.session_state["rfp_data_matrix"] = compiled_df
-                save_dataframe_to_db(compiled_df, uploaded_file.name)
-                st.toast("Stateful Data Grid Compiled & Archived!", icon="🚀")
-
+                save_dataframe_to_cloud(compiled_df, uploaded_file.name)
+                st.toast("Stateful Cloud Grid Sync Complete!")
+                
             except Exception as e:
-                st.error(f"Execution Error Caught & Isolated: {e}")
+                st.error(f"System Error Handled: {e}")
 
-    # --- DECOUPLED RENDERING ENVIRONMENT ---
     if st.session_state["rfp_data_matrix"] is not None:
         current_df = st.session_state["rfp_data_matrix"]
-        
-        high_risk_rows = current_df[current_df["risk_multiplier"] > 1.00] if "risk_multiplier" in current_df.columns else []
-        total_items = len(current_df)
-        risk_percentage = round((len(high_risk_rows) / total_items) * 100) if total_items > 0 else 0
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Total Extracted Lines", f"{total_items} Items")
-        with c2:
-            st.metric("Risk Incidents Flagged", f"{len(high_risk_rows)} Rows")
-        with c3:
-            if risk_percentage > 30:
-                st.metric("Commercial Health Score", f"{100 - risk_percentage}% (High Risk Profile)", delta="-Alert Matrix", delta_color="inverse")
-            else:
-                st.metric("Commercial Health Score", f"{100 - risk_percentage}% (Healthy Bid)", delta="Go Approved", delta_color="normal")
-                
-        st.write("---")
-        st.markdown("💬 **Interactive Workspace:** Edit fields directly inside the cells, modify assigned teams, or flip the workflow status on your mobile screen.")
         
         st.data_editor(
             current_df,
             column_config={
-                "category": st.column_config.SelectboxColumn(
-                    "Structural Workspace",
-                    options=["Proposal Draft", "Risk Audit", "Calculation Layer"],
-                    required=True,
-                ),
-                "assigned_team": st.column_config.SelectboxColumn(
-                    "Assigned Department",
-                    options=["Sales Planning", "Legal/Compliance", "Technical Ops", "Commercial Finance"],
-                    required=True,
-                ),
-                "status": st.column_config.SelectboxColumn(
-                    "Review Status Workflow",
-                    options=["Pending Review", "Approved", "Escalated/Risk Flagged"],
-                    required=True,
-                ),
-                "risk_multiplier": st.column_config.NumberColumn(
-                    "Risk Factor Score",
-                    min_value=1.00,
-                    max_value=3.00,
-                    step=0.05,
-                    format="%.2f",
-                ),
-                "requirement_extracted": st.column_config.TextColumn(
-                    "Extracted Core Requirements Text",
-                    width="large"
-                )
+                "category": st.column_config.SelectboxColumn("Workspace", options=["Proposal Draft", "Risk Audit", "Calculation Layer"], required=True),
+                "assigned_team": st.column_config.SelectboxColumn("Department", options=["Sales Planning", "Legal/Compliance", "Technical Ops", "Commercial Finance"], required=True),
+                "status": st.column_config.SelectboxColumn("Workflow Status", options=["Pending Review", "Approved", "Escalated/Risk Flagged"], required=True),
+                "risk_multiplier": st.column_config.NumberColumn("Risk Index", min_value=1.00, max_value=3.00, format="%.2f"),
+                "requirement_extracted": st.column_config.TextColumn("Extracted Text", width="large")
             },
-            hide_index=True,
-            use_container_width=True,
-            on_change=sync_matrix_edits,       
-            key="interactive_matrix_editor"     
+            hide_index=True, use_container_width=True, on_change=sync_matrix_edits, key="interactive_matrix_editor"
         )
         
         st.write("---")
-        st.subheader("📥 Export & Distribution Workspace")
-        
-        excel_payload = generate_enterprise_excel(current_df)
-        
         st.download_button(
-            label="📥 Download Enterprise Commercial Matrix (.xlsx Format)",
-            data=excel_payload,
-            file_name="finalized_commercial_rfp_matrix.xlsx",
+            label="📥 Export Certified Commercial Sheet (.xlsx)",
+            data=generate_enterprise_excel(current_df),
+            file_name="finalized_commercial_matrix.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
             type="primary"
         )
-        
     else:
-        st.info("Awaiting file upload. Drop your PDF, Word document, or Excel matrix on the left side to begin.")
+        st.info("Awaiting file processing execution loop.")
+    
