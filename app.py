@@ -277,4 +277,3 @@ with col_right:
         )
     else:
         st.info("Awaiting file processing execution loop.")
-    
