@@ -22,9 +22,10 @@ st.title("🚀 Ne-Ha Portal")
 st.caption("Commercial Multi-Modal RFP Proposal, Audit & Margin Protection Workspace")
 st.write("---")
 
-col1, col2 = st.columns([1, 1], gap="large")
+# Main Input Layout Split
+col_left, col_right = st.columns([1, 1.2], gap="large")
 
-with col1:
+with col_left:
     st.subheader("📁 Snap & Audit: Document Ingestion")
     st.markdown("Drop client procurement sheets, logistics profiles, or complete heavy-equipment RFPs below.")
     
@@ -40,7 +41,7 @@ with col1:
     
     generate_btn = st.button("Execute Ingestion & Response", type="primary", use_container_width=True)
 
-with col2:
+with col_right:
     st.subheader("✨ Generated Output Workspace")
     
     if generate_btn:
@@ -64,40 +65,82 @@ with col2:
                 # Processing Module: Ingesting and reading the PDF file content
                 with st.spinner("⏳ Extracting text data layout from file structure..."):
                     reader = PdfReader(uploaded_file)
-                    # Loop through pages and extract plain text string layouts
                     for page_num in range(len(reader.pages)):
                         page_text = reader.pages[page_num].extract_text()
                         if page_text:
                             extracted_rfp_text += page_text + "\n"
                 
-                # Error check to verify if document contained clean readable text
                 if not extracted_rfp_text.strip():
-                    st.error("⚠️ Document Parsing Alert: The file was read, but no readable text layers were found. Ensure it is not an un-scanned flattened picture file.")
+                    st.error("⚠️ Document Parsing Alert: The file was read, but no readable text layers were found.")
                 else:
-                    with st.spinner("🧠 Initializing Gemini Cognitive Engine..."):
-                        # Structuring corporate prompt instruction
-                        prompt = f"""You are an elite corporate proposal specialist. Analyze this extracted raw text from a client RFP and formulate a completely structured, highly professional response matrix:
+                    with st.spinner("🧠 Initializing Deep Risk & Multi-Modal Audit Pipelines..."):
                         
+                        # High-yield enterprise engineering prompt
+                        prompt = f"""You are an elite corporate proposal specialist, risk auditor, and technical engineer. 
+                        Analyze the extracted raw text from this client RFP and break your analysis into three strictly defined sections using the exact headers below:
+
+                        ### [PROPOSAL_DRAFT]
+                        Draft a highly professional, fully customized response matrix to the client's requirements found in the text.
+
+                        ### [RISK_AUDIT]
+                        Actively protect our margins. Identify and list hidden operational risks, strict SLAs, severe safety thresholds, liability terms, or delivery penalty functions that could expose our organization to financial loss. Provide a specific warning for each.
+
+                        ### [CALCULATION_LAYER]
+                        Extract and analyze any mathematical equations, technical engineering parameters, payload coefficients, or financial cost functions embedded in the text. If no explicit formulas exist, construct the logical financial total-landed-cost or operational formula needed to safely quote this specific bid.
+
                         --- EXTRACTED CLIENT RFP TEXT ---
                         {extracted_rfp_text}
                         """
                         
                         response_object = llm.invoke(prompt)
-                        clean_response_text = response_object.content
+                        full_output = response_object.content
                         
-                        st.toast("Document Audited & Responded!", icon="✅")
-                        st.markdown("### Draft Proposal Response Matrix")
-                        st.markdown(clean_response_text)
-                        st.write("---")
-                        st.download_button(
-                            label="📥 Download Proposal Matrix (.txt)",
-                            data=clean_response_text,
-                            file_name="Ne-Ha_Ingested_Proposal.txt",
-                            mime="text/plain",
-                            use_container_width=True
-                        )
+                        # Split processing logic to distribute data across the workspace tabs
+                        proposal_part = ""
+                        risk_part = ""
+                        calc_part = ""
+                        
+                        if "### [PROPOSAL_DRAFT]" in full_output:
+                            parts = full_output.split("### [PROPOSAL_DRAFT]")[1]
+                            if "### [RISK_AUDIT]" in parts:
+                                proposal_part, remaining = parts.split("### [RISK_AUDIT]")
+                                if "### [CALCULATION_LAYER]" in remaining:
+                                    risk_part, calc_part = remaining.split("### [CALCULATION_LAYER]")
+                                else:
+                                    risk_part = remaining
+                            else:
+                                proposal_part = parts
+                        else:
+                            proposal_part = full_output  # Fallback
+                        
+                        st.toast("Deep Workspace Audit Complete!", icon="🚀")
+                        
+                        # Enterprise Multi-Tab Workspace Interface
+                        tab1, tab2, tab3 = st.tabs([
+                            "📋 Draft Proposal Matrix", 
+                            "🚨 Margin & Risk Protection", 
+                            "🧮 Calculation Layer"
+                        ])
+                        
+                        with tab1:
+                            st.markdown("### 📝 Autonomously Generated Response")
+                            st.markdown(proposal_part.strip() if proposal_part else "Processing complete.")
+                            
+                        with tab2:
+                            st.markdown("### 🚨 Active Operational Risk Flags")
+                            if risk_part.strip():
+                                st.markdown(risk_part.strip())
+                            else:
+                                st.success("✅ No critical operational or financial penalty risks flagged in this layout.")
+                                
+                        with tab3:
+                            st.markdown("### 🧮 Technical & Financial Formula Sandbox")
+                            if calc_part.strip():
+                                st.markdown(calc_part.strip())
+                            else:
+                                st.info("ℹ️ General mathematical analysis applied.")
+                                
             except Exception as e:
                 st.error(f"Execution Error: {e}")
     else:
         st.info("Awaiting file upload. Drop your PDF contract on the left and execute the workspace pipeline.")
-    
