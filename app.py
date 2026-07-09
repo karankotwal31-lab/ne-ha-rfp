@@ -43,12 +43,12 @@ with col2:
             st.error("🔑 Configuration missing: Please input your Gemini API Key in the left sidebar.")
         else:
             try:
-                # Inject key to system environment variables
+                # Set the key as an environment variable to support the modern AQ key structure
                 os.environ["GOOGLE_API_KEY"] = api_key
                 
-                # Updated to the current production model 'gemini-2.0-flash' to resolve the 404 error
+                # Using the active production model identifier 'gemini-2.5-flash'
                 llm = ChatGoogleGenerativeAI(
-                    model="gemini-2.0-flash", 
+                    model="gemini-2.5-flash", 
                     transport="rest"
                 )
                 
