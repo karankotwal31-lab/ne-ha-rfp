@@ -18,7 +18,7 @@ def robust_text_sanitizer(text):
     text = re.sub(r'\n\s*\n', '\n', text)
     return text.strip()
 
-# Autonomous Self-Repair Parser - Bulletproofed against structural routing failures
+# Autonomous Self-Repair Parser - Upgraded with Ultimate Resilient Fallback Sweep
 def self_healing_parser(full_text):
     # Default initialized states to ensure UI doesn't freeze or drop out
     proposal = "⚠️ State Recovery: The draft proposal matrix failed structural routing. Displaying fallback raw analysis block below.\n\n"
@@ -66,12 +66,15 @@ def self_healing_parser(full_text):
     if c_idx != -1:
         calc = full_text[c_idx + c_len:].strip()
         
-    # Final sanity fallback check if whole partitions are absent
-    if p_idx == -1 and r_idx == -1 and c_idx == -1:
-        proposal = full_text
-        risk = "⚠️ Warning: Document formatting was highly irregular. Review the core proposal tab for unified risks."
-        calc = "⚠️ Warning: Mathematical items were combined directly inside the master response workspace."
-        
+    # Ultimate Resilient Fallback Sweep (Ensures zero data loss under destructive test stress)
+    if p_idx == -1 or r_idx == -1 or c_idx == -1:
+        if proposal.startswith("⚠️ State Recovery"):
+            proposal = full_text
+        if risk.startswith("⚠️ State Recovery"):
+            risk = full_text
+        if calc.startswith("⚠️ State Recovery"):
+            calc = full_text
+            
     return proposal, risk, calc
 
 # Sidebar Configuration Control Panel
@@ -199,3 +202,4 @@ with col_right:
                 st.error(f"Execution Error Caught & Isolated: {e}")
     else:
         st.info("Awaiting file upload. Drop your PDF contract on the left and execute.")
+    
