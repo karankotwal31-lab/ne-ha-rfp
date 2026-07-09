@@ -2,17 +2,8 @@ import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pypdf import PdfReader
 import os
-import re
 
 st.set_page_config(page_title="Ne-Ha | Commercial RFP Engine", page_icon="🚀", layout="wide")
-
-# Text-Sanitizer Engine to solve the garbled/stretched text bug
-def clean_extracted_text(text):
-    # Fixes specific PDF extraction artifacts where letters or numbers get single spaced out
-    text = re.sub(r'(?<=\b\w)\s(?=\w\b)', '', text)
-    # Remove excessive blank lines or tracking layout spaces
-    text = re.sub(r'\n\s*\n', '\n', text)
-    return text.strip()
 
 # Sidebar Configuration Control Panel
 with st.sidebar:
@@ -61,6 +52,7 @@ with col_right:
             try:
                 os.environ["GOOGLE_API_KEY"] = api_key
                 
+                # Active production model
                 llm = ChatGoogleGenerativeAI(
                     model="gemini-2.5-flash", 
                     transport="rest"
@@ -68,62 +60,54 @@ with col_right:
                 
                 raw_extracted_text = ""
                 
-                with st.spinner("⏳ Extracting text data layout from file structure..."):
+                with st.spinner("⏳ Extracting text data layout..."):
                     reader = PdfReader(uploaded_file)
-                    for page_num in range(len(reader.pages)):
-                        page_text = reader.pages[page_num].extract_text()
-                        if page_text:
-                            raw_extracted_text += page_text + "\n"
+                    for page in reader.pages:
+                        text = page.extract_text()
+                        if text:
+                            raw_extracted_text += text + "\n"
                 
-                # Execute text cleaning routine
-                extracted_rfp_text = clean_extracted_text(raw_extracted_text)
-                
-                if not extracted_rfp_text.strip():
+                if not raw_extracted_text.strip():
                     st.error("⚠️ Document Parsing Alert: The file was read, but no readable text layers were found.")
                 else:
-                    with st.spinner("🧠 Initializing Deep Risk & Multi-Modal Audit Pipelines..."):
+                    with st.spinner("🧠 Analyzing Layout via Gemini..."):
                         
                         prompt = f"""You are an elite corporate proposal specialist, risk auditor, and technical engineer. 
-                        Analyze the extracted raw text from this client RFP and break your analysis into three strictly defined sections using the exact headers below. 
-                        Do not mirror any bad character spacing or weird formatting found in the raw text—print all responses cleanly:
+                        Analyze the text below. Break your analysis into three sections using these exact headers:
 
                         ### [PROPOSAL_DRAFT]
-                        Draft a highly professional, fully customized response matrix to the client's requirements found in the text. Make it crisp and executive-ready.
+                        Draft a highly professional, fully customized response matrix to the client's requirements.
 
                         ### [RISK_AUDIT]
-                        Actively protect our margins. Pinpoint severe delivery penalty functions, liquidated damages, strict timeline obligations, safety thresholds, or hidden operational risks.
+                        Identify severe delivery penalty functions, strict timelines, safety thresholds, or hidden financial risks.
 
                         ### [CALCULATION_LAYER]
-                        Extract and solve any mathematical equations, transport load limits, fuel surcharges, or financial pricing formulas embedded in the text. Provide a clear step-by-step mathematical validation.
+                        Extract and solve any mathematical equations, transport load limits, or financial pricing formulas.
 
                         --- EXTRACTED CLIENT RFP TEXT ---
-                        {extracted_rfp_text}
+                        {raw_extracted_text}
                         """
                         
                         response_object = llm.invoke(prompt)
                         full_output = response_object.content
                         
-                        proposal_part = ""
-                        risk_part = ""
-                        calc_part = ""
+                        proposal_part = "Processing completed."
+                        risk_part = "No risks flagged."
+                        calc_part = "No mathematical parameters extracted."
                         
-                        # Parse the structured response blocks out cleanly
+                        # Bulletproof splitting logic
                         if "### [PROPOSAL_DRAFT]" in full_output:
-                            parts = full_output.split("### [PROPOSAL_DRAFT]")[1]
-                            if "### [RISK_AUDIT]" in parts:
-                                proposal_part, remaining = parts.split("### [RISK_AUDIT]")
-                                if "### [CALCULATION_LAYER]" in remaining:
-                                    risk_part, calc_part = remaining.split("### [CALCULATION_LAYER]")
-                                else:
-                                    risk_part = remaining
-                            else:
-                                proposal_part = parts
+                            proposal_part = full_output.split("### [PROPOSAL_DRAFT]")[1]
+                            if "### [RISK_AUDIT]" in proposal_part:
+                                proposal_part, risk_part = proposal_part.split("### [RISK_AUDIT]")
+                                if "### [CALCULATION_LAYER]" in risk_part:
+                                    risk_part, calc_part = risk_part.split("### [CALCULATION_LAYER]")
                         else:
                             proposal_part = full_output
                         
-                        st.toast("Deep Workspace Audit Complete!", icon="🚀")
+                        st.toast("Analysis Completed!", icon="🚀")
                         
-                        # Render Premium UI Tabs
+                        # Clean UI Workspace Tabs
                         tab1, tab2, tab3 = st.tabs([
                             "📋 Draft Proposal Matrix", 
                             "🚨 Margin & Risk Protection", 
@@ -131,27 +115,17 @@ with col_right:
                         ])
                         
                         with tab1:
-                            st.markdown("### 📝 Autonomously Generated Response")
-                            st.markdown(proposal_part.strip() if proposal_part else "Processing complete.")
+                            st.markdown(proposal_part.strip())
                             
                         with tab2:
-                            st.markdown("### 🚨 Active Operational Risk Flags")
-                            if risk_part.strip():
-                                # Using error container styling for maximum risk visibility
-                                st.error("⚠️ CRITICAL COMPLIANCE AND MARGIN THREATS DETECTED BELOW:")
-                                st.markdown(risk_part.strip())
-                            else:
-                                st.success("✅ No critical operational or financial penalty risks flagged in this layout.")
+                            st.error("⚠️ CRITICAL COMPLIANCE AND MARGIN THREATS DETECTED:")
+                            st.markdown(risk_part.strip())
                                 
                         with tab3:
-                            st.markdown("### 🧮 Technical & Financial Formula Sandbox")
-                            if calc_part.strip():
-                                st.info("📊 AUTOMATED MATHEMATICAL FORMULA EXTRACATION & EVALUATION:")
-                                st.markdown(calc_part.strip())
-                            else:
-                                st.info("ℹ️ General mathematical analysis applied.")
+                            st.info("📊 AUTOMATED MATHEMATICAL FORMULA EVALUATION:")
+                            st.markdown(calc_part.strip())
                                 
             except Exception as e:
                 st.error(f"Execution Error: {e}")
     else:
-        st.info("Awaiting file upload. Drop your PDF contract on the left and execute the workspace pipeline.")
+        st.info("Awaiting file upload. Drop your PDF contract on the left and execute.")
