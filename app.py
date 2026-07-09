@@ -43,7 +43,7 @@ with col2:
             st.error("🔑 Configuration missing: Please input your Gemini API Key in the left sidebar.")
         else:
             try:
-                llm = GoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
+                llm = GoogleGenerativeAI(model="gemini-flash-latest", google_api_key=api_key)
                 with st.spinner("🧠 Analyzing requirements and structuring enterprise response..."):
                     prompt = f"Generate a highly professional corporate RFP proposal response explicitly addressing these requirements:\n{requirements}"
                     response = llm.invoke(prompt)
