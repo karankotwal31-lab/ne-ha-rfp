@@ -1,4 +1,4 @@
-       import streamlit as st
+import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 
@@ -43,11 +43,10 @@ with col2:
             st.error("🔑 Configuration missing: Please input your Gemini API Key in the left sidebar.")
         else:
             try:
-                # 1. Inject the key directly into the system environment variables.
-                # This is mandatory for the new 'AQ.' keys to authenticate correctly through LangChain.
+                # Inject key to system environment variables
                 os.environ["GOOGLE_API_KEY"] = api_key
                 
-                # 2. Force transport='rest' to prevent the library from misinterpreting the AQ key structure.
+                # Explicitly use rest transport to process the modern AQ key structure natively
                 llm = ChatGoogleGenerativeAI(
                     model="gemini-1.5-flash", 
                     transport="rest"
@@ -74,4 +73,4 @@ with col2:
                 st.error(f"Execution Error: {e}")
     else:
         st.info("Awaiting your input criteria. Click 'Generate & Audit Proposal' to execute the draft workspace.")
-         
+       
