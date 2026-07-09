@@ -1,2 +1,2 @@
-streamlit
-langchain-google-genai
+streamlit==1.38.0
+langchain-google-genai==4.2.7
