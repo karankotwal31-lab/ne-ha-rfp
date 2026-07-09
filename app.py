@@ -6,10 +6,11 @@ import re
 import json
 import sqlite3
 import pandas as pd
+from docx import Document
 from openpyxl import Workbook
 from io import BytesIO
 
-# Global structural page tuning
+# Set global structural app page configurations
 st.set_page_config(
     page_title="Ne-Ha | Enterprise RFP Data Matrix", 
     page_icon="🚀", 
@@ -19,9 +20,9 @@ st.set_page_config(
 
 DB_FILE = "neha_enterprise_rfp.db"
 
-# --- ENTERPRISE SQLITE PERSISTENCE ENGINE ---
+# --- ENTERPRISE RELATIONAL RETENTION LAYER ---
 def init_db():
-    """Initializes a permanent relational schema to survive browser tab sleep timeouts."""
+    """Establishes localized tables to protect data from browser tab timeouts."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
@@ -41,15 +42,13 @@ def init_db():
     conn.close()
 
 def save_dataframe_to_db(df, doc_name):
-    """Overwrites or inserts the parsed array into the relational database layer."""
+    """Safely writes the current dataframe matrix down to relational database storage."""
     if df is None or df.empty:
         return
     conn = sqlite3.connect(DB_FILE)
-    # Clear out older scratch memory for this document to avoid dirty duplicates
     cursor = conn.cursor()
     cursor.execute("DELETE FROM rfp_matrix WHERE doc_name = ?", (doc_name,))
     
-    # Save the dataframe natively
     df_to_save = df.copy()
     df_to_save["doc_name"] = doc_name
     df_to_save.to_sql("rfp_matrix", conn, if_exists="append", index=False)
@@ -57,14 +56,14 @@ def save_dataframe_to_db(df, doc_name):
     conn.close()
 
 def load_latest_document_from_db(doc_name):
-    """Fetches records back into active memory if the phone web tab refreshes or sleeps."""
+    """Restores active screen metrics natively if a user session breaks or sleeps."""
     conn = sqlite3.connect(DB_FILE)
     query = "SELECT section, requirement_extracted, category, assigned_team, status, risk_multiplier, historical_match FROM rfp_matrix WHERE doc_name = ?"
     df = pd.read_sql_query(query, conn, params=(doc_name,))
     conn.close()
     return df if not df.empty else None
 
-# --- PHASE 3.5: MULTI-STAGE LAYOUT & TEXT SANITIZER ---
+# --- PHASE 3.5: LAYOUT TEXT SANITIZER ---
 def robust_text_sanitizer(text):
     if not text:
         return ""
@@ -76,7 +75,7 @@ def robust_text_sanitizer(text):
 # --- HIGH-RESILIENCE JSON STRUCTURAL REPAIR ENGINE ---
 def extract_json_array(response_text):
     if not response_text:
-        return get_emergency_fallback("Null payload returned from engine.")
+        return get_emergency_fallback("Null string payload passed down to parser.")
         
     cleaned_text = response_text.strip()
     cleaned_text = re.sub(r'^```json\s*', '', cleaned_text, flags=re.IGNORECASE)
@@ -97,63 +96,58 @@ def extract_json_array(response_text):
                 return json.loads(match.group(0))
         except Exception:
             pass
-        return get_emergency_fallback(f"JSON Structure Violation: {str(e)}")
+        return get_emergency_fallback(f"JSON Framework Exception: {str(e)}")
 
 def get_emergency_fallback(reason):
     return [{
         "section": "Raw Extraction Fallback",
-        "requirement_extracted": f"Structural Parser Alert: {reason}",
+        "requirement_extracted": f"Parser Security Intercept: {reason}",
         "category": "Proposal Draft",
         "assigned_team": "Sales Planning",
         "status": "Pending Review",
         "risk_multiplier": 1.00,
-        "historical_match": "0% (State Recovery Active)"
+        "historical_match": "0% (State Recovery Core Active)"
     }]
 
-# --- COGNITIVE SYNC CELL WORKFLOW MANAGER ---
+# --- ASYNCHRONOUS COGNITIVE CELL MANAGER ---
 def sync_matrix_edits():
-    """Natively pushes inline grid cell changes into session memory and database records instantly."""
+    """Callback function that cleanly updates the database when a cell is edited."""
     if "interactive_matrix_editor" in st.session_state and st.session_state.get("active_doc_name"):
         edits = st.session_state["interactive_matrix_editor"]
         df = st.session_state["rfp_data_matrix"]
         doc_name = st.session_state["active_doc_name"]
         
-        # Process changed values cleanly
+        # Process modifications smoothly
         for row_idx, changed_cols in edits.get("edited_rows", {}).items():
             for col_name, new_val in changed_cols.items():
                 df.iat[row_idx, df.columns.get_loc(col_name)] = new_val
                 
-        # Handle added lines inside UI workspace
+        # Handle new manual row assignments inside UI matrix
         for added_row in edits.get("added_rows", {}):
             df = pd.concat([df, pd.DataFrame([added_row])], ignore_index=True)
             
         st.session_state["rfp_data_matrix"] = df
-        # Safe commit straight down to permanent database block
         save_dataframe_to_db(df, doc_name)
 
-# --- BI-DIRECTIONAL EXCEL TEMPLATE EXPORTER ---
+# --- BI-DIRECTIONAL EXCEL LAYOUT MATRIX STYLER ---
 def generate_enterprise_excel(df):
-    """Outputs a highly-formatted corporate Excel payload with styled sheet tables."""
+    """Converts local active runtime updates into an enterprise-ready formatted Excel document."""
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "RFP Proposal Matrix"
-    
-    # Enable crisp default grid lines
+    ws.title = "RFP Requirements Matrix"
     ws.views.sheetView[0].showGridLines = True
     
-    # Establish columns headers
     headers = list(df.columns)
     ws.append(headers)
     
-    # Populate database lines
     for _, row in df.iterrows():
         ws.append(list(row))
         
     wb.save(output)
     return output.getvalue()
 
-# Initialize localized environment components
+# Initialize background structural dependencies
 init_db()
 
 if "rfp_data_matrix" not in st.session_state:
@@ -161,7 +155,7 @@ if "rfp_data_matrix" not in st.session_state:
 if "active_doc_name" not in st.session_state:
     st.session_state["active_doc_name"] = None
 
-# Sidebar Control Console
+# Sidebar Console Layout Control Panel
 with st.sidebar:
     st.title("⚙️ Commercial Panel")
     st.markdown("Welcome to **Ne-Ha**, your autonomous workspace.")
@@ -175,24 +169,24 @@ with st.sidebar:
         st.warning("Awaiting Authorization")
 
 st.title("🚀 Ne-Ha Portal")
-st.caption("Commercial Multi-Modal RFP Matrix, Requirement Shredder & Workflow Workspace [Stateful Layer v5.0]")
+st.caption("Universal Multi-Format Commercial RFP Matrix & Workflow Workspace [Stateful Layer v5.5]")
 st.write("---")
 
 col_left, col_right = st.columns([1, 1.5], gap="large")
 
 with col_left:
     st.subheader("📁 Snap & Audit: Document Ingestion")
-    st.markdown("Drop client procurement sheets, logistics profiles, or complete heavy-equipment RFPs below.")
+    st.markdown("Drop client procurement spreadsheets (.xlsx), narrative contracts (.docx), or legacy PDFs below.")
     
+    # UPGRADE: Comprehensive multi-format ingestion accept flags
     uploaded_file = st.file_uploader(
-        "Upload Client RFP Document (PDF format only):", 
-        type=["pdf"], 
+        "Upload Client Commercial File:", 
+        type=["pdf", "docx", "xlsx"], 
         key="rfp_uploader"
     )
     
     if uploaded_file is not None:
-        st.info(f"📄 Target Captured: '{uploaded_file.name}'")
-        # If document already parsed in past sessions, auto-recover it immediately
+        st.info(f"📄 File Target Ingested: '{uploaded_file.name}'")
         if st.session_state["active_doc_name"] != uploaded_file.name:
             cached_df = load_latest_document_from_db(uploaded_file.name)
             if cached_df is not None:
@@ -209,13 +203,12 @@ with col_right:
         if not api_key:
             st.error("🔑 Configuration missing: Please input your Gemini API Key in the left sidebar.")
         elif uploaded_file is None:
-            st.error("❌ Document missing: Please upload a PDF file on the left before running execution.")
+            st.error("❌ Document missing: Please upload a file on the left before running execution.")
         else:
             try:
                 os.environ["GOOGLE_API_KEY"] = api_key
                 st.session_state["active_doc_name"] = uploaded_file.name
                 
-                # Using gemini-2.5-flash with transport='rest' for stable endpoint response formatting
                 llm = ChatGoogleGenerativeAI(
                     model="gemini-2.5-flash", 
                     transport="rest",
@@ -223,23 +216,58 @@ with col_right:
                 )
                 
                 raw_extracted_text = ""
+                file_extension = uploaded_file.name.split(".")[-1].lower()
                 
-                with st.spinner("⏳ Ingesting and clearing document layout layers..."):
-                    reader = PdfReader(uploaded_file)
-                    # Pagination Token Guard: Limits analysis scanning blocks to preserve token ceiling
-                    target_pages = reader.pages[:40] 
-                    for page in target_pages:
-                        try:
-                            page_text = page.extract_text()
-                            if page_text:
-                                raw_extracted_text += page_text + "\n"
-                        except Exception:
-                            continue
+                with st.spinner(f"⏳ Processing layout layers from .{file_extension} binary asset..."):
+                    
+                    # Core Handler A: Advanced PDF String Extractor
+                    if file_extension == "pdf":
+                        reader = PdfReader(uploaded_file)
+                        target_pages = reader.pages[:40] 
+                        for page in target_pages:
+                            try:
+                                page_text = page.extract_text()
+                                if page_text:
+                                    raw_extracted_text += page_text + "\n"
+                            except Exception:
+                                continue
+                                
+                    # Core Handler B: Document Table Merging-Safe Parser
+                    elif file_extension == "docx":
+                        doc = Document(uploaded_file)
+                        for paragraph in doc.paragraphs:
+                            if paragraph.text.strip():
+                                raw_extracted_text += paragraph.text + "\n"
+                        
+                        # Defensively extract tables to eliminate duplicate strings from merged cells
+                        for table in doc.tables:
+                            seen_cells = set()
+                            for row in table.rows:
+                                row_text = []
+                                for cell in row.cells:
+                                    if cell not in seen_cells:
+                                        seen_cells.add(cell)
+                                        txt = cell.text.strip()
+                                        if txt:
+                                            row_text.append(txt)
+                                if row_text:
+                                    raw_extracted_text += " | ".join(row_text) + "\n"
+                                    
+                    # Core Handler C: High-Fidelity Excel to Markdown Matrix Transpiler
+                    elif file_extension == "xlsx":
+                        # Read all sheets to ensure hidden spreadsheet matrices aren't skipped
+                        excel_file = pd.ExcelFile(uploaded_file)
+                        for sheet_name in excel_file.sheet_names:
+                            excel_df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
+                            if not excel_df.empty:
+                                raw_extracted_text += f"\n--- Sheet: {sheet_name} ---\n"
+                                # Convert rows into clean Markdown tables for reliable context window parsing
+                                raw_extracted_text += excel_df.to_markdown(index=False) + "\n"
                 
                 cleaned_rfp_text = robust_text_sanitizer(raw_extracted_text)
                 
                 if not cleaned_rfp_text:
-                    st.error("⚠️ Document Parsing Alert: The file contains no valid readable text layers.")
+                    st.error("⚠️ Ingestion Failure: This document contains no valid readable text coordinates.")
                 else:
                     with st.spinner("🧠 Orchestrating Structural Requirement Extraction Matrix..."):
                         
@@ -255,7 +283,7 @@ with col_right:
                             "category": "Must be exactly one of: 'Proposal Draft', 'Risk Audit', or 'Calculation Layer'",
                             "assigned_team": "Must be exactly one of: 'Sales Planning', 'Legal/Compliance', 'Technical Ops', or 'Commercial Finance'",
                             "status": "Pending Review",
-                            "risk_multiplier": 1.00 (Scale upwards dynamically to 1.50 or 2.00 if extreme liabilities or financial penalties are spotted),
+                            "risk_multiplier": 1.00,
                             "historical_match": "92% Match to Historical Bid"
                         }}
 
@@ -267,15 +295,14 @@ with col_right:
                             response_object = llm.invoke(prompt)
                             full_output = response_object.content
                         except Exception as api_err:
-                            raise RuntimeError(f"Cognitive Pipeline Inference Boundary Error: {api_err}")
+                            raise RuntimeError(f"Cognitive Inference Boundary Violation: {api_err}")
                         
                         parsed_json_data = extract_json_array(full_output)
                         compiled_df = pd.DataFrame(parsed_json_data)
                         
                         st.session_state["rfp_data_matrix"] = compiled_df
-                        # Initial commit dump to relational backend table storage
                         save_dataframe_to_db(compiled_df, uploaded_file.name)
-                        st.toast("Stateful Data Grid Compiled & Archived Successfully!", icon="🚀")
+                        st.toast("Stateful Data Grid Compiled & Archived!", icon="🚀")
 
             except Exception as e:
                 st.error(f"Execution Error Caught & Isolated: {e}")
@@ -336,14 +363,13 @@ with col_right:
             },
             hide_index=True,
             use_container_width=True,
-            on_change=sync_matrix_edits,       # Natively handles updates only when mutations happen
-            key="interactive_matrix_editor"     # Connects editor to session tracking storage space
+            on_change=sync_matrix_edits,       
+            key="interactive_matrix_editor"     
         )
         
         st.write("---")
         st.subheader("📥 Export & Distribution Workspace")
         
-        # Native, professionally structured Excel template export generator block
         excel_payload = generate_enterprise_excel(current_df)
         
         st.download_button(
@@ -356,4 +382,4 @@ with col_right:
         )
         
     else:
-        st.info("Awaiting file upload. Drop your PDF contract on the left and execute the matrix pipeline.")
+        st.info("Awaiting file upload. Drop your PDF, Word document, or Excel matrix on the left side to begin.")
