@@ -46,9 +46,9 @@ with col2:
                 # Inject key to system environment variables
                 os.environ["GOOGLE_API_KEY"] = api_key
                 
-                # Explicitly use rest transport to process the modern AQ key structure natively
+                # Updated to the current production model 'gemini-2.0-flash' to resolve the 404 error
                 llm = ChatGoogleGenerativeAI(
-                    model="gemini-1.5-flash", 
+                    model="gemini-2.0-flash", 
                     transport="rest"
                 )
                 
@@ -73,4 +73,3 @@ with col2:
                 st.error(f"Execution Error: {e}")
     else:
         st.info("Awaiting your input criteria. Click 'Generate & Audit Proposal' to execute the draft workspace.")
-       
