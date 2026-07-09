@@ -63,3 +63,4 @@ with col2:
                 st.error(f"Execution Error: {e}")
     else:
         st.info("Awaiting your input criteria. Click 'Generate & Audit Proposal' to execute the draft workspace.")
+    
