@@ -1,6 +1,8 @@
 import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pypdf import PdfReader
+import pdfplumber
+from PIL import Image
 import os
 import re
 import json
@@ -22,7 +24,6 @@ DB_FILE = "neha_enterprise_rfp.db"
 
 # --- ENTERPRISE RELATIONAL RETENTION LAYER ---
 def init_db():
-    """Establishes localized tables to protect data from browser tab timeouts."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
@@ -42,7 +43,6 @@ def init_db():
     conn.close()
 
 def save_dataframe_to_db(df, doc_name):
-    """Safely writes the current dataframe matrix down to relational database storage."""
     if df is None or df.empty:
         return
     conn = sqlite3.connect(DB_FILE)
@@ -56,7 +56,6 @@ def save_dataframe_to_db(df, doc_name):
     conn.close()
 
 def load_latest_document_from_db(doc_name):
-    """Restores active screen metrics natively if a user session breaks or sleeps."""
     conn = sqlite3.connect(DB_FILE)
     query = "SELECT section, requirement_extracted, category, assigned_team, status, risk_multiplier, historical_match FROM rfp_matrix WHERE doc_name = ?"
     df = pd.read_sql_query(query, conn, params=(doc_name,))
@@ -111,18 +110,15 @@ def get_emergency_fallback(reason):
 
 # --- ASYNCHRONOUS COGNITIVE CELL MANAGER ---
 def sync_matrix_edits():
-    """Callback function that cleanly updates the database when a cell is edited."""
     if "interactive_matrix_editor" in st.session_state and st.session_state.get("active_doc_name"):
         edits = st.session_state["interactive_matrix_editor"]
         df = st.session_state["rfp_data_matrix"]
         doc_name = st.session_state["active_doc_name"]
         
-        # Process modifications smoothly
         for row_idx, changed_cols in edits.get("edited_rows", {}).items():
             for col_name, new_val in changed_cols.items():
                 df.iat[row_idx, df.columns.get_loc(col_name)] = new_val
                 
-        # Handle new manual row assignments inside UI matrix
         for added_row in edits.get("added_rows", {}):
             df = pd.concat([df, pd.DataFrame([added_row])], ignore_index=True)
             
@@ -131,7 +127,6 @@ def sync_matrix_edits():
 
 # --- BI-DIRECTIONAL EXCEL LAYOUT MATRIX STYLER ---
 def generate_enterprise_excel(df):
-    """Converts local active runtime updates into an enterprise-ready formatted Excel document."""
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
@@ -147,7 +142,6 @@ def generate_enterprise_excel(df):
     wb.save(output)
     return output.getvalue()
 
-# Initialize background structural dependencies
 init_db()
 
 if "rfp_data_matrix" not in st.session_state:
@@ -155,7 +149,6 @@ if "rfp_data_matrix" not in st.session_state:
 if "active_doc_name" not in st.session_state:
     st.session_state["active_doc_name"] = None
 
-# Sidebar Console Layout Control Panel
 with st.sidebar:
     st.title("⚙️ Commercial Panel")
     st.markdown("Welcome to **Ne-Ha**, your autonomous workspace.")
@@ -178,7 +171,6 @@ with col_left:
     st.subheader("📁 Snap & Audit: Document Ingestion")
     st.markdown("Drop client procurement spreadsheets (.xlsx), narrative contracts (.docx), or legacy PDFs below.")
     
-    # UPGRADE: Comprehensive multi-format ingestion accept flags
     uploaded_file = st.file_uploader(
         "Upload Client Commercial File:", 
         type=["pdf", "docx", "xlsx"], 
@@ -209,6 +201,7 @@ with col_right:
                 os.environ["GOOGLE_API_KEY"] = api_key
                 st.session_state["active_doc_name"] = uploaded_file.name
                 
+                # Low temperature for highly structured formatting constraints
                 llm = ChatGoogleGenerativeAI(
                     model="gemini-2.5-flash", 
                     transport="rest",
@@ -217,13 +210,15 @@ with col_right:
                 
                 raw_extracted_text = ""
                 file_extension = uploaded_file.name.split(".")[-1].lower()
+                is_scanned_pdf = False
+                pdf_page_images = []
                 
                 with st.spinner(f"⏳ Processing layout layers from .{file_extension} binary asset..."):
                     
-                    # Core Handler A: Advanced PDF String Extractor
                     if file_extension == "pdf":
+                        # Fast primary text layer scan
                         reader = PdfReader(uploaded_file)
-                        target_pages = reader.pages[:40] 
+                        target_pages = reader.pages[:15] # Safe upper boundary to protect token limitations
                         for page in target_pages:
                             try:
                                 page_text = page.extract_text()
@@ -231,15 +226,27 @@ with col_right:
                                     raw_extracted_text += page_text + "\n"
                             except Exception:
                                 continue
+                        
+                        # --- CRITICAL AUTOMATED FALLBACK TRIGGER ---
+                        # If characters are blank or completely compressed, trigger pixel rendering engine
+                        cleaned_test = robust_text_sanitizer(raw_extracted_text)
+                        if len(cleaned_test) < 150: 
+                            is_scanned_pdf = True
+                            st.warning("📸 Scanned/Flat PDF structure detected! Activating Multi-Modal Vision Processing Layer...")
+                            uploaded_file.seek(0)
+                            with pdfplumber.open(uploaded_file) as pdf:
+                                # Process the top 5 key pages to stay clear of rate limits
+                                for idx, page in enumerate(pdf.pages[:5]):
+                                    # Convert vector space straight into high-density PIL images
+                                    img = page.to_image(resolution=150).original
+                                    pdf_page_images.append(img)
                                 
-                    # Core Handler B: Document Table Merging-Safe Parser
                     elif file_extension == "docx":
                         doc = Document(uploaded_file)
                         for paragraph in doc.paragraphs:
                             if paragraph.text.strip():
                                 raw_extracted_text += paragraph.text + "\n"
                         
-                        # Defensively extract tables to eliminate duplicate strings from merged cells
                         for table in doc.tables:
                             seen_cells = set()
                             for row in table.rows:
@@ -253,26 +260,50 @@ with col_right:
                                 if row_text:
                                     raw_extracted_text += " | ".join(row_text) + "\n"
                                     
-                    # Core Handler C: High-Fidelity Excel to Markdown Matrix Transpiler
                     elif file_extension == "xlsx":
-                        # Read all sheets to ensure hidden spreadsheet matrices aren't skipped
                         excel_file = pd.ExcelFile(uploaded_file)
                         for sheet_name in excel_file.sheet_names:
                             excel_df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
                             if not excel_df.empty:
                                 raw_extracted_text += f"\n--- Sheet: {sheet_name} ---\n"
-                                # Convert rows into clean Markdown tables for reliable context window parsing
                                 raw_extracted_text += excel_df.to_markdown(index=False) + "\n"
                 
-                cleaned_rfp_text = robust_text_sanitizer(raw_extracted_text)
-                
-                if not cleaned_rfp_text:
-                    st.error("⚠️ Ingestion Failure: This document contains no valid readable text coordinates.")
-                else:
-                    with st.spinner("🧠 Orchestrating Structural Requirement Extraction Matrix..."):
+                # --- ORCHESTRATE COGNITIVE RUNTIMES BASED ON STRUCTURE ---
+                if is_scanned_pdf:
+                    with st.spinner("🧠 Initializing computer vision array. Scanning page matrices directly..."):
+                        # Build standard structural prompt framing
+                        base_vision_prompt = """You are an elite corporate proposal specialist, risk auditor, and technical software engineer.
+                        Examine the uploaded document page image carefully. Transcribe, analyze, and extract the critical 10-15 core requirements, commercial liabilities, load metrics, or execution targets you see.
                         
-                        prompt = f"""You are an elite corporate proposal specialist, risk auditor, and technical software engineer.
-                        Analyze the text block below. Core objective: extract the critical, most meaningful 15-20 core execution line-items, commercial conditions, load limits, or liabilities.
+                        CRITICAL FORMATTING BOUNDARY: You must return ONLY a clean, valid raw JSON array block. Do NOT use markdown symbols, do NOT include backticks (```json), and escape any interior quotation symbols.
+                        
+                        Expected Schema Framework:
+                        {
+                            "section": "Visible Clause reference, page index, or margin header matching the source location",
+                            "requirement_extracted": "Detailed transcription and operational breakdown summary of the target rule/condition discovered",
+                            "category": "Must be exactly one of: 'Proposal Draft', 'Risk Audit', or 'Calculation Layer'",
+                            "assigned_team": "Must be exactly one of: 'Sales Planning', 'Legal/Compliance', 'Technical Ops', or 'Commercial Finance'",
+                            "status": "Pending Review",
+                            "risk_multiplier": 1.00,
+                            "historical_match": "N/A (Vision Core Extracted)"
+                        }
+                        """
+                        # Pass vision tokens directly inside the multi-modal payload list array
+                        vision_payload = [base_vision_prompt] + pdf_page_images
+                        
+                        try:
+                            response_object = llm.invoke(vision_payload)
+                            full_output = response_object.content
+                        except Exception as api_err:
+                            raise RuntimeError(f"Vision Pipeline Boundary Violation: {api_err}")
+                else:
+                    cleaned_rfp_text = robust_text_sanitizer(raw_extracted_text)
+                    if not cleaned_rfp_text:
+                        raise ValueError("The document contains no legible strings or layout targets.")
+                        
+                    with st.spinner("🧠 Shredding text layer metrics down into structured tabular arrays..."):
+                        text_prompt = f"""You are an elite corporate proposal specialist, risk auditor, and technical software engineer.
+                        Analyze the text block below. Core objective: extract the critical, most meaningful 15-20 core execution line-items, commercial conditions, or liabilities.
                         
                         CRITICAL FORMATTING BOUNDARY: You must return ONLY a clean, valid raw JSON array block. Do NOT use markdown symbols, do NOT include backticks (```json), and escape any interior quotation symbols.
                         
@@ -290,19 +321,18 @@ with col_right:
                         --- EXTRACTED CLIENT RFP TEXT ---
                         {cleaned_rfp_text}
                         """
-                        
                         try:
-                            response_object = llm.invoke(prompt)
+                            response_object = llm.invoke(text_prompt)
                             full_output = response_object.content
                         except Exception as api_err:
-                            raise RuntimeError(f"Cognitive Inference Boundary Violation: {api_err}")
-                        
-                        parsed_json_data = extract_json_array(full_output)
-                        compiled_df = pd.DataFrame(parsed_json_data)
-                        
-                        st.session_state["rfp_data_matrix"] = compiled_df
-                        save_dataframe_to_db(compiled_df, uploaded_file.name)
-                        st.toast("Stateful Data Grid Compiled & Archived!", icon="🚀")
+                            raise RuntimeError(f"Text Inference Boundary Violation: {api_err}")
+                
+                parsed_json_data = extract_json_array(full_output)
+                compiled_df = pd.DataFrame(parsed_json_data)
+                
+                st.session_state["rfp_data_matrix"] = compiled_df
+                save_dataframe_to_db(compiled_df, uploaded_file.name)
+                st.toast("Stateful Data Grid Compiled & Archived!", icon="🚀")
 
             except Exception as e:
                 st.error(f"Execution Error Caught & Isolated: {e}")
@@ -311,7 +341,6 @@ with col_right:
     if st.session_state["rfp_data_matrix"] is not None:
         current_df = st.session_state["rfp_data_matrix"]
         
-        # Real-time Telemetry Dashboard calculations
         high_risk_rows = current_df[current_df["risk_multiplier"] > 1.00] if "risk_multiplier" in current_df.columns else []
         total_items = len(current_df)
         risk_percentage = round((len(high_risk_rows) / total_items) * 100) if total_items > 0 else 0
@@ -330,7 +359,6 @@ with col_right:
         st.write("---")
         st.markdown("💬 **Interactive Workspace:** Edit fields directly inside the cells, modify assigned teams, or flip the workflow status on your mobile screen.")
         
-        # Stable, non-recursive data rendering layer
         st.data_editor(
             current_df,
             column_config={
