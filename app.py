@@ -1,5 +1,6 @@
+
 import streamlit as st
-from langchain_google_genai import GoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 
 st.set_page_config(page_title="Ne-Ha | RFP Engine", page_icon="🚀", layout="wide")
@@ -43,18 +44,25 @@ with col2:
             st.error("🔑 Configuration missing: Please input your Gemini API Key in the left sidebar.")
         else:
             try:
-                llm = GoogleGenerativeAI(model="gemini-flash-latest", google_api_key=api_key)
+                # Upgraded to ChatGoogleGenerativeAI to natively support modern "AQ." key structures
+                llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", api_key=api_key)
+                
                 with st.spinner("🧠 Analyzing requirements and structuring enterprise response..."):
                     prompt = f"Generate a highly professional corporate RFP proposal response explicitly addressing these requirements:\n{requirements}"
-                    response = llm.invoke(prompt)
+                    
+                    # Invoke the chat model
+                    response_object = llm.invoke(prompt)
+                    
+                    # Extract only the raw string content from the response message object
+                    clean_response_text = response_object.content
                     
                     st.toast("Proposal Drafted Successfully!", icon="✅")
                     st.markdown("### Draft Response")
-                    st.markdown(response)
+                    st.markdown(clean_response_text)
                     st.write("---")
                     st.download_button(
                         label="📥 Download Proposal (.txt)",
-                        data=response,
+                        data=clean_response_text,
                         file_name="Ne-Ha_RFP_Proposal.txt",
                         mime="text/plain",
                         use_container_width=True
@@ -63,4 +71,3 @@ with col2:
                 st.error(f"Execution Error: {e}")
     else:
         st.info("Awaiting your input criteria. Click 'Generate & Audit Proposal' to execute the draft workspace.")
-    
