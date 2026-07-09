@@ -1,5 +1,7 @@
 streamlit
 langchain-google-genai
 pypdf
-openpyxl
+python-docx
 pandas
+openpyxl
+tabulate
