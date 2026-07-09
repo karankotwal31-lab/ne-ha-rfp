@@ -1,5 +1,4 @@
-
-import streamlit as st
+       import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 
@@ -44,16 +43,20 @@ with col2:
             st.error("🔑 Configuration missing: Please input your Gemini API Key in the left sidebar.")
         else:
             try:
-                # Upgraded to ChatGoogleGenerativeAI to natively support modern "AQ." key structures
-                llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", api_key=api_key)
+                # 1. Inject the key directly into the system environment variables.
+                # This is mandatory for the new 'AQ.' keys to authenticate correctly through LangChain.
+                os.environ["GOOGLE_API_KEY"] = api_key
+                
+                # 2. Force transport='rest' to prevent the library from misinterpreting the AQ key structure.
+                llm = ChatGoogleGenerativeAI(
+                    model="gemini-1.5-flash", 
+                    transport="rest"
+                )
                 
                 with st.spinner("🧠 Analyzing requirements and structuring enterprise response..."):
                     prompt = f"Generate a highly professional corporate RFP proposal response explicitly addressing these requirements:\n{requirements}"
                     
-                    # Invoke the chat model
                     response_object = llm.invoke(prompt)
-                    
-                    # Extract only the raw string content from the response message object
                     clean_response_text = response_object.content
                     
                     st.toast("Proposal Drafted Successfully!", icon="✅")
@@ -71,3 +74,4 @@ with col2:
                 st.error(f"Execution Error: {e}")
     else:
         st.info("Awaiting your input criteria. Click 'Generate & Audit Proposal' to execute the draft workspace.")
+         
